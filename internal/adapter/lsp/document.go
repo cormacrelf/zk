@@ -5,15 +5,54 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mickael-menu/zk/internal/core"
 	protocol "github.com/tliron/glsp/protocol_3_16"
-	"github.com/tliron/kutil/logging"
 )
+
+// documentStore holds opened documents.
+type documentStore struct {
+	documents map[string]*document
+	fs        core.FileStorage
+}
+
+func newDocumentStore(fs core.FileStorage) *documentStore {
+	return &documentStore{
+		documents: map[string]*document{},
+		fs:        fs,
+	}
+}
+
+func (s *documentStore) DidOpen(params protocol.DidOpenTextDocumentParams) {
+	langID := params.TextDocument.LanguageID
+	if langID != "markdown" && langID != "vimwiki" {
+		return
+	}
+
+	path := s.normalizePath(params.TextDocument.URI)
+	s.documents[path] = &document{
+		Path:    path,
+		Content: params.TextDocument.Text,
+	}
+}
+
+func (s *documentStore) Close(uri protocol.DocumentUri) {
+	delete(s.documents, uri)
+}
+
+func (s *documentStore) Get(pathOrURI string) (*document, bool) {
+	path := s.normalizePath(pathOrURI)
+	d, ok := s.documents[path]
+	return d, ok
+}
+
+func (s *documentStore) normalizePath(pathOrUri string) string {
+	return s.fs.Canonical(strings.TrimPrefix(pathOrUri, "file://"))
+}
 
 // document represents an opened file.
 type document struct {
 	Path    string
 	Content string
-	Log     logging.Logger
 	lines   []string
 }
 
